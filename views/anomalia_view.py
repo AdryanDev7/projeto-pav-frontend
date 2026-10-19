@@ -1,70 +1,46 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-from api_client import ApiCliente
+from tkinter import ttk
 
-class AnomaliaView:
-    def __init__(self, parent):
-        self.parent = parent
-        self.criar_componentes()
-        self.carregar_dados()
+from helpers import obrigatorio, inteiro
+from views.base_view import BaseCrudView
 
-    def criar_componentes(self):
-        # Título
-        lbl_titulo = tk.Label(self.parent, text="Registo de Anomalias e Alertas Críticos", font=("Arial", 14, "bold"))
-        lbl_titulo.pack(pady=10)
+SEVERIDADES = ("Baixa", "Média", "Alta", "Crítica")
 
-        # Botões de Ação
-        frame_botoes = tk.Frame(self.parent)
-        frame_botoes.pack(pady=5)
 
-        btn_excluir = tk.Button(frame_botoes, text="Excluir Anomalia Selecionada", bg="red", fg="white", command=self.excluir)
-        btn_excluir.pack(side="left", padx=5)
+class AnomaliaView(BaseCrudView):
+    TITULO = "Registo de Anomalias e Alertas"
+    TITULO_FORM = "Registar / Atualizar Anomalia (manual)"
+    ENDPOINT = "anomalias"
+    COLUNAS = [("id", "ID", 50), ("leitura_id", "ID Leitura", 80),
+               ("descricao_alerta", "Descrição do Alerta", 450), ("severidade", "Severidade", 100)]
 
-        btn_atualizar_lista = tk.Button(frame_botoes, text="Atualizar Lista", command=self.carregar_dados)
-        btn_atualizar_lista.pack(side="left", padx=5)
+    def criar_formulario(self, frame):
+        tk.Label(frame, text="ID da Leitura:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        self.entry_leitura_id = tk.Entry(frame, width=22)
+        self.entry_leitura_id.grid(row=0, column=1, padx=5, pady=2)
 
-        # Tabela (Treeview)
-        self.tree = ttk.Treeview(self.parent, columns=("ID", "Leitura ID", "Descrição", "Severidade"), show="headings")
-        self.tree.heading("ID", text="ID")
-        self.tree.heading("Leitura ID", text="ID Leitura")
-        self.tree.heading("Descrição", text="Descrição do Alerta")
-        self.tree.heading("Severidade", text="Severidade")
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
+        tk.Label(frame, text="Severidade:").grid(row=0, column=2, sticky="w", padx=5, pady=2)
+        self.combo_severidade = ttk.Combobox(frame, values=SEVERIDADES, state="readonly", width=19)
+        self.combo_severidade.set(SEVERIDADES[0])
+        self.combo_severidade.grid(row=0, column=3, padx=5, pady=2)
 
-        self.tree.bind("<<TreeviewSelect>>", self.selecionar_linha)
+        tk.Label(frame, text="Descrição:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        self.entry_descricao = tk.Entry(frame, width=70)
+        self.entry_descricao.grid(row=1, column=1, columnspan=3, sticky="w", padx=5, pady=2)
 
-    def carregar_dados(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        
-        resultado = ApiCliente.get("anomalias")
-        if resultado and resultado != "CONNECTION_ERROR":
-            for anom in resultado:
-                self.tree.insert("", "end", values=(
-                    anom.get("id"),
-                    anom.get("leitura_id"),
-                    anom.get("descricao_alerta"),
-                    anom.get("severidade")
-                ))
+    def coletar_dados(self, editando=False):
+        return {
+            "leitura_id": inteiro(self.entry_leitura_id.get(), "ID da Leitura"),
+            "descricao_alerta": obrigatorio(self.entry_descricao.get(), "Descrição"),
+            "severidade": obrigatorio(self.combo_severidade.get(), "Severidade"),
+        }
 
-    def selecionar_linha(self, event):
-        selecionado = self.tree.selection()
-        if selecionado:
-            item = self.tree.item(selecionado)
-            valores = item['values']
-            self.id_selecionado = valores[0]
+    def preencher_formulario(self, registro):
+        self.definir_texto(self.entry_leitura_id, registro.get("leitura_id"))
+        self.definir_texto(self.entry_descricao, registro.get("descricao_alerta"))
+        self.combo_severidade.set(registro.get("severidade") or SEVERIDADES[0])
 
-    def excluir(self):
-        if not hasattr(self, 'id_selecionado'):
-            messagebox.showwarning("Aviso", "Selecione uma anomalia na tabela para excluir.")
-            return
-        
-        if messagebox.askyesno("Confirmar", "Deseja realmente excluir este registo de anomalia?"):
-            resp = ApiCliente.delete(f"anomalias/{self.id_selecionado}")
-            if resp and resp.status_code == 200:
-                messagebox.showinfo("Sucesso", "Anomalia excluída com sucesso!")
-                if hasattr(self, 'id_selecionado'):
-                    del self.id_selecionado
-                self.carregar_dados()
-            else:
-                messagebox.showerror("Erro", "Não foi possível excluir a anomalia.")
+    def limpar_formulario(self):
+        self.entry_leitura_id.delete(0, tk.END)
+        self.entry_descricao.delete(0, tk.END)
+        self.combo_severidade.set(SEVERIDADES[0])

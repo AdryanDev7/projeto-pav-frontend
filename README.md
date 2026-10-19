@@ -1,43 +1,28 @@
 # 🖥️ Painel de Controlo - Sistema IoT (Frontend PAV)
 
-Interface gráfica desenvolvida em **Python (Tkinter)** para a unidade curricular de **Programação de Aplicações Visuais (PAV)**. Esta aplicação atua como camada de apresentação visual, comunicando-se de forma totalmente modularizada com a API REST do backend através de requisições HTTP (`requests`).
+Interface gráfica em **Python (Tkinter)** que consome a API REST (Flask-RESTful) do backend. Projeto separado da API; roda **fora** do Docker.
 
----
+## Estrutura
+* `main.py` – janela principal com abas (`ttk.Notebook`).
+* `api_client.py` – único módulo que usa `requests`. Todas as chamadas têm `timeout=5`; devolve `Response`, `"CONNECTION_ERROR"` (API fora do ar/timeout) ou `None`.
+* `helpers.py` – validações locais (`obrigatorio`, `inteiro`, `decimal`, datas) e tratamento padronizado das respostas (`tratar_resposta`, `carregar_lista`, `carregar_objeto`). Lê erros em `{"erro": ...}` e `{"message": ...}` e sucesso em `{"mensagem", "id", "dados"}`.
+* `views/base_view.py` – `BaseCrudView`: classe-base (herança) com tabela, seleção, listar, excluir, cadastrar e editar.
+* `views/localizacao_view.py`, `sensor_view.py`, `leitura_view.py`, `anomalia_view.py` – herdam de `BaseCrudView` e definem só formulário, validação e colunas.
+* `views/analise_view.py` – aba **Análise / Estatísticas** (`GET /api/sensores/<id>/estatisticas`).
 
-## 🚀 Tecnologias Utilizadas
-* **Linguagem:** Python 3.13+
-* **Interface Gráfica (GUI):** Tkinter & TTK (Themed Tkinter)
-* **Comunicação HTTP:** Biblioteca `requests`
-* **Arquitetura:** Projeto separado do backend, organizado por domínios/views.
+## Funcionalidades
+* CRUD completo (cadastro, consulta, edição, exclusão) em Localizações, Sensores, Leituras e Anomalias.
+* **Sensores:** status escolhido em Combobox (Ativo, Inativo, Em Manutenção).
+* **Leituras:** edição (PUT) e filtros por sensor e período (`sensor_id`, `inicio`, `fim`).
+* **Anomalias:** cadastro (POST), edição (PUT) e exclusão; severidade em Combobox.
+* **Análise:** total de leituras, média, mínimo, máximo, desvio padrão e total de anomalias por sensor/período.
+* Campos obrigatórios e tipos validados antes de enviar a requisição.
+* Falha de conexão: mensagem na linha de status de cada aba ao carregar (sem pop-ups em cascata na abertura) e pop-up ao atualizar manualmente.
+* Regras de negócio do backend (ex.: RN10 – localização com sensores) aparecem como mensagens claras.
 
----
+## Como executar
+1. Suba a API e o banco: `docker compose up` (API na porta 5000).
+2. `pip install -r requirements.txt`
+3. `python main.py`
 
-## 📂 Estrutura do Frontend
-* **`main.py`**: Ponto de entrada principal da aplicação gráfica com janelas em abas (*Notebook*).
-* **`api_client.py`**: Cliente HTTP centralizado responsável por gerir as requisições (GET, POST, PUT, DELETE) com a API Flask.
-* **`views/`**: Módulos visuais independentes para a gestão de cada entidade:
-  * `localizacao_view.py`: Gestão de fábricas e coordenadas geográficas.
-  * `sensor_view.py`: Controlo de dispositivos IoT e níveis de bateria.
-  * `leitura_view.py`: Registo temporal de medições com simulação de alertas.
-  * `anomalia_view.py`: Monitorização de alertas críticos gerados automaticamente.
-
----
-
-## 📋 Funcionalidades da Interface
-1. **Gestão Completa (CRUD):** Cada aba possui ecrãs dedicados para Cadastro, Consulta em tabela dinâmica (`Treeview`), Edição de registos selecionados e Exclusão segura.
-2. **Atualização Dinâmica:** Botões de sincronização com a API para recarregar dados em tempo real.
-3. **Tratamento Robusto de Erros:** Validações visuais integradas (`messagebox`) para campos obrigatórios, tipos de dados incorretos e falhas de comunicação com o servidor backend.
-
----
-
-## ⚙️ Como Executar o Frontend
-
-1. **Garantir que a API Backend e o Docker estão a rodar:**
-   * Certifica-te de que o PostgreSQL está ativo via Docker e a API Flask (`app.py`) está a escutar na porta `5000`.
-
-2. **Instalar as Dependências:**
-   ```bash
-   pip install requests
-
-3. **Executar a Aplicação:**
-    python main.py
+Datas nos filtros: `AAAA-MM-DD` ou `AAAA-MM-DD HH:MM:SS` (no campo "Fim", só a data inclui o dia inteiro).

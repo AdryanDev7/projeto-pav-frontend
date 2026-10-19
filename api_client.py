@@ -1,46 +1,45 @@
+"""
+Cliente HTTP centralizado: é o ÚNICO módulo que conhece o `requests`.
+
+Todos os métodos devolvem uma destas três coisas:
+  * um objeto `requests.Response`  -> a API respondeu (com sucesso ou com erro HTTP);
+  * a string CONNECTION_ERROR      -> API fora do ar, recusou a conexão ou demorou demais;
+  * None                           -> qualquer outro erro inesperado.
+
+ATENÇÃO: `bool(Response)` é False para status 4xx/5xx. Por isso, nunca use
+`if resp:` para saber se a API respondeu; use `resp is None` / `isinstance(resp, str)`.
+"""
 import requests
+from requests.exceptions import ConnectionError as ErroDeConexao, Timeout
 
 API_URL = "http://127.0.0.1:5000/api"
+TIMEOUT = 5                       # segundos; evita a interface "congelar" se a API cair
+CONNECTION_ERROR = "CONNECTION_ERROR"
+
 
 class ApiCliente:
     @staticmethod
-    def get(endpoint):
+    def _enviar(funcao_http, endpoint, **argumentos):
+        """Executa requests.get/post/put/delete com timeout e tratamento de erros comum."""
         try:
-            response = requests.get(f"{API_URL}/{endpoint}")
-            if response.status_code in [200, 201]:
-                return response.json()
+            return funcao_http(f"{API_URL}/{endpoint}", timeout=TIMEOUT, **argumentos)
+        except (ErroDeConexao, Timeout):
+            return CONNECTION_ERROR
+        except requests.exceptions.RequestException:
             return None
-        except requests.exceptions.ConnectionError:
-            return "CONNECTION_ERROR"
-        except Exception:
-            return None
+
+    @staticmethod
+    def get(endpoint, params=None):
+        return ApiCliente._enviar(requests.get, endpoint, params=params)
 
     @staticmethod
     def post(endpoint, dados):
-        try:
-            response = requests.post(f"{API_URL}/{endpoint}", json=dados)
-            return response
-        except requests.exceptions.ConnectionError:
-            return "CONNECTION_ERROR"
-        except Exception:
-            return None
+        return ApiCliente._enviar(requests.post, endpoint, json=dados)
 
     @staticmethod
     def put(endpoint, dados):
-        try:
-            response = requests.put(f"{API_URL}/{endpoint}", json=dados)
-            return response
-        except requests.exceptions.ConnectionError:
-            return "CONNECTION_ERROR"
-        except Exception:
-            return None
+        return ApiCliente._enviar(requests.put, endpoint, json=dados)
 
     @staticmethod
     def delete(endpoint):
-        try:
-            response = requests.delete(f"{API_URL}/{endpoint}")
-            return response
-        except requests.exceptions.ConnectionError:
-            return "CONNECTION_ERROR"
-        except Exception:
-            return None
+        return ApiCliente._enviar(requests.delete, endpoint)

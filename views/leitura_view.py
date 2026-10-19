@@ -1,115 +1,91 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-from api_client import ApiCliente
 
-class LeituraView:
-    def __init__(self, parent):
-        self.parent = parent
-        self.criar_componentes()
+from helpers import (ValidacaoError, obrigatorio, inteiro, decimal,
+                     data_hora_opcional, montar_filtro_periodo)
+from views.base_view import BaseCrudView
+
+
+class LeituraView(BaseCrudView):
+    TITULO = "Histórico de Leituras de Sensores"
+    TITULO_FORM = "Registar / Editar Leitura (valor > 90 gera anomalia; bateria < 15% também)"
+    ENDPOINT = "leituras"
+    COLUNAS = [("id", "ID", 50), ("sensor_id", "ID Sensor", 80), ("valor", "Valor", 100),
+               ("nivel_bateria", "Bateria (%)", 90), ("data_hora", "Data e Hora", 160)]
+
+    # ------------------------------------------------------------ filtros (GET /leituras?...)
+    def criar_filtros(self):
+        frame = tk.LabelFrame(self.parent, text="Filtros (deixe em branco para listar tudo)",
+                              padx=10, pady=5)
+        frame.pack(fill="x", padx=10, pady=5)
+
+        tk.Label(frame, text="ID Sensor:").grid(row=0, column=0, padx=5)
+        self.filtro_sensor = tk.Entry(frame, width=8)
+        self.filtro_sensor.grid(row=0, column=1, padx=5)
+
+        tk.Label(frame, text="Início (AAAA-MM-DD):").grid(row=0, column=2, padx=5)
+        self.filtro_inicio = tk.Entry(frame, width=20)
+        self.filtro_inicio.grid(row=0, column=3, padx=5)
+
+        tk.Label(frame, text="Fim (AAAA-MM-DD):").grid(row=0, column=4, padx=5)
+        self.filtro_fim = tk.Entry(frame, width=20)
+        self.filtro_fim.grid(row=0, column=5, padx=5)
+
+        tk.Button(frame, text="Filtrar", command=lambda: self.carregar_dados(mostrar_popup=True)
+                  ).grid(row=0, column=6, padx=5)
+        tk.Button(frame, text="Limpar filtros", command=self.limpar_filtros).grid(row=0, column=7, padx=5)
+
+    def parametros_consulta(self):
+        params = montar_filtro_periodo(self.filtro_inicio.get(), self.filtro_fim.get())
+        if self.filtro_sensor.get().strip():
+            params["sensor_id"] = inteiro(self.filtro_sensor.get(), "ID Sensor (filtro)")
+        return params or None
+
+    def limpar_filtros(self):
+        for entry in (self.filtro_sensor, self.filtro_inicio, self.filtro_fim):
+            entry.delete(0, tk.END)
         self.carregar_dados()
 
-    def criar_componentes(self):
-        # Título
-        lbl_titulo = tk.Label(self.parent, text="Histórico de Leituras de Sensores", font=("Arial", 14, "bold"))
-        lbl_titulo.pack(pady=10)
-
-        # Frame de Formulário (Registar Leitura)
-        frame_form = tk.LabelFrame(self.parent, text="Registar Nova Leitura (Gera Anomalia se > 90.0)", padx=10, pady=10)
-        frame_form.pack(fill="x", padx=10, pady=5)
-
-        tk.Label(frame_form, text="ID do Sensor:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        self.entry_sensor_id = tk.Entry(frame_form, width=18)
+    # ------------------------------------------------------------ formulário
+    def criar_formulario(self, frame):
+        tk.Label(frame, text="ID do Sensor:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        self.entry_sensor_id = tk.Entry(frame, width=22)
         self.entry_sensor_id.grid(row=0, column=1, padx=5, pady=2)
 
-        tk.Label(frame_form, text="Valor da Medição:").grid(row=0, column=2, sticky="w", padx=5, pady=2)
-        self.entry_valor = tk.Entry(frame_form, width=18)
+        tk.Label(frame, text="Valor da Medição:").grid(row=0, column=2, sticky="w", padx=5, pady=2)
+        self.entry_valor = tk.Entry(frame, width=22)
         self.entry_valor.grid(row=0, column=3, padx=5, pady=2)
 
-        tk.Label(frame_form, text="Nível de Bateria (%):").grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        self.entry_bateria = tk.Entry(frame_form, width=18)
+        tk.Label(frame, text="Bateria (0 a 100 %):").grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        self.entry_bateria = tk.Entry(frame, width=22)
         self.entry_bateria.grid(row=1, column=1, padx=5, pady=2)
 
-        # Botões de Ação
-        frame_botoes = tk.Frame(self.parent)
-        frame_botoes.pack(pady=5)
+        tk.Label(frame, text="Data/Hora (opcional):").grid(row=1, column=2, sticky="w", padx=5, pady=2)
+        self.entry_data_hora = tk.Entry(frame, width=22)
+        self.entry_data_hora.grid(row=1, column=3, padx=5, pady=2)
+        tk.Label(frame, text="Formato: AAAA-MM-DD HH:MM:SS",
+                 fg="gray40").grid(row=2, column=2, columnspan=2, sticky="w", padx=5)
 
-        btn_salvar = tk.Button(frame_botoes, text="Registar Leitura", bg="green", fg="white", command=self.salvar)
-        btn_salvar.pack(side="left", padx=5)
+    def coletar_dados(self, editando=False):
+        dados = {
+            "sensor_id": inteiro(self.entry_sensor_id.get(), "ID do Sensor"),
+            "valor": decimal(self.entry_valor.get(), "Valor da Medição"),
+            "nivel_bateria": inteiro(self.entry_bateria.get(), "Bateria"),
+        }
+        data_hora = data_hora_opcional(self.entry_data_hora.get(), "Data/Hora")
+        if data_hora:
+            dados["data_hora"] = data_hora
+        elif editando:
+            # Na edição, a data/hora vazia faria a API regravar "agora" e perder a data original.
+            raise ValidacaoError("Para editar, a Data/Hora precisa estar preenchida "
+                                 "(selecione a leitura na tabela para trazer a data original).")
+        return dados
 
-        btn_excluir = tk.Button(frame_botoes, text="Excluir Selecionada", bg="red", fg="white", command=self.excluir)
-        btn_excluir.pack(side="left", padx=5)
+    def preencher_formulario(self, registro):
+        self.definir_texto(self.entry_sensor_id, registro.get("sensor_id"))
+        self.definir_texto(self.entry_valor, registro.get("valor"))
+        self.definir_texto(self.entry_bateria, registro.get("nivel_bateria"))
+        self.definir_texto(self.entry_data_hora, registro.get("data_hora"))
 
-        btn_atualizar_lista = tk.Button(frame_botoes, text="Atualizar Lista", command=self.carregar_dados)
-        btn_atualizar_lista.pack(side="left", padx=5)
-
-        # Tabela (Treeview)
-        self.tree = ttk.Treeview(self.parent, columns=("ID", "Sensor ID", "Valor", "Bateria", "Data/Hora"), show="headings")
-        self.tree.heading("ID", text="ID")
-        self.tree.heading("Sensor ID", text="ID Sensor")
-        self.tree.heading("Valor", text="Valor")
-        self.tree.heading("Bateria", text="Bateria (%)")
-        self.tree.heading("Data/Hora", text="Data e Hora")
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
-
-        self.tree.bind("<<TreeviewSelect>>", self.selecionar_linha)
-
-    def carregar_dados(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        
-        resultado = ApiCliente.get("leituras")
-        if resultado and resultado != "CONNECTION_ERROR":
-            for leit in resultado:
-                self.tree.insert("", "end", values=(
-                    leit.get("id"),
-                    leit.get("sensor_id"),
-                    leit.get("valor"),
-                    leit.get("nivel_bateria"),
-                    leit.get("data_hora")
-                ))
-
-    def salvar(self):
-        try:
-            dados = {
-                "sensor_id": int(self.entry_sensor_id.get()),
-                "valor": float(self.entry_valor.get()),
-                "nivel_bateria": int(self.entry_bateria.get())
-            }
-            resp = ApiCliente.post("leituras", dados)
-            if resp and resp.status_code == 201:
-                messagebox.showinfo("Sucesso", "Leitura registada com sucesso! (Verifique as anomalias se o valor for superior a 90.0)")
-                self.limpar_campos()
-                self.carregar_dados()
-            else:
-                erro = resp.json().get("erro", "Erro desconhecido") if resp else "Erro de comunicação"
-                messagebox.showerror("Erro", f"Não foi possível registar leitura: {erro}")
-        except ValueError:
-            messagebox.showwarning("Aviso", "O ID do sensor e a bateria devem ser inteiros, e o valor deve ser numérico.")
-
-    def selecionar_linha(self, event):
-        selecionado = self.tree.selection()
-        if selecionado:
-            item = self.tree.item(selecionado)
-            valores = item['values']
-            self.id_selecionado = valores[0]
-
-    def excluir(self):
-        if not hasattr(self, 'id_selecionado'):
-            messagebox.showwarning("Aviso", "Selecione uma leitura na tabela para excluir.")
-            return
-        
-        if messagebox.askyesno("Confirmar", "Deseja realmente excluir esta leitura?"):
-            resp = ApiCliente.delete(f"leituras/{self.id_selecionado}")
-            if resp and resp.status_code == 200:
-                messagebox.showinfo("Sucesso", "Leitura excluída com sucesso!")
-                self.limpar_campos()
-                self.carregar_dados()
-            else:
-                messagebox.showerror("Erro", "Não foi possível excluir a leitura.")
-
-    def limpar_campos(self):
-        self.entry_sensor_id.delete(0, tk.END)
-        self.entry_valor.delete(0, tk.END)
-        self.entry_bateria.delete(0, tk.END)
-        if hasattr(self, 'id_selecionado'):
-            del self.id_selecionado
+    def limpar_formulario(self):
+        for entry in (self.entry_sensor_id, self.entry_valor, self.entry_bateria, self.entry_data_hora):
+            entry.delete(0, tk.END)

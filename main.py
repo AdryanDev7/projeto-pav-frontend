@@ -1,36 +1,41 @@
 import tkinter as tk
 from tkinter import ttk
+
 from views.localizacao_view import LocalizacaoView
 from views.sensor_view import SensorView
 from views.leitura_view import LeituraView
 from views.anomalia_view import AnomaliaView
+from views.analise_view import AnaliseView
+
 
 class MainApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Painel de Controlo - Sistema IoT (Frontend PAV)")
-        self.root.geometry("900x600")
+        self.root.geometry("1000x700")
 
-        # Criar o sistema de abas (Notebook)
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True)
 
-        # Instanciar as abas correspondentes a cada domínio
-        self.tab_localizacao = ttk.Frame(self.notebook)
-        self.tab_sensor = ttk.Frame(self.notebook)
-        self.tab_leitura = ttk.Frame(self.notebook)
-        self.tab_anomalia = ttk.Frame(self.notebook)
+        # (título da aba, classe da view). Cada view recebe o Frame da sua aba.
+        abas = [("Localizações", LocalizacaoView), ("Sensores", SensorView),
+                ("Leituras", LeituraView), ("Anomalias", AnomaliaView),
+                ("Análise / Estatísticas", AnaliseView)]
 
-        self.notebook.add(self.tab_localizacao, text="Localizações")
-        self.notebook.add(self.tab_sensor, text="Sensores")
-        self.notebook.add(self.tab_leitura, text="Leituras")
-        self.notebook.add(self.tab_anomalia, text="Anomalias")
+        self.views = {}   # {nome do widget da aba: instância da view}
+        for titulo, classe_view in abas:
+            frame = ttk.Frame(self.notebook)
+            self.notebook.add(frame, text=titulo)
+            self.views[str(frame)] = classe_view(frame)
 
-        # Inicializar os conteúdos de cada aba
-        LocalizacaoView(self.tab_localizacao)
-        SensorView(self.tab_sensor)
-        LeituraView(self.tab_leitura)
-        AnomaliaView(self.tab_anomalia)
+        # Ao trocar de aba, as views que precisarem (ex.: Análise) atualizam seus dados
+        self.notebook.bind("<<NotebookTabChanged>>", self.ao_trocar_aba)
+
+    def ao_trocar_aba(self, _evento=None):
+        view = self.views.get(self.notebook.select())
+        if view is not None and hasattr(view, "ao_exibir"):
+            view.ao_exibir()
+
 
 if __name__ == "__main__":
     root = tk.Tk()

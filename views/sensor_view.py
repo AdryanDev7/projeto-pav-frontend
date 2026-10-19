@@ -1,171 +1,61 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-from api_client import ApiCliente
+from tkinter import ttk
 
-class SensorView:
-    def __init__(self, parent):
-        self.parent = parent
-        self.criar_componentes()
-        self.carregar_dados()
+from helpers import obrigatorio, inteiro
+from views.base_view import BaseCrudView
 
-    def criar_componentes(self):
-        # Título
-        lbl_titulo = tk.Label(self.parent, text="Gestão de Sensores IoT", font=("Arial", 14, "bold"))
-        lbl_titulo.pack(pady=10)
+# Mesmos valores aceitos pela regra de negócio RN05 do backend
+STATUS_VALIDOS = ("Ativo", "Inativo", "Em Manutenção")
 
-        # Frame de Formulário
-        frame_form = tk.LabelFrame(self.parent, text="Cadastrar / Atualizar Sensor", padx=10, pady=10)
-        frame_form.pack(fill="x", padx=10, pady=5)
 
-        tk.Label(frame_form, text="Código Serial:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        self.entry_serial = tk.Entry(frame_form, width=18)
+class SensorView(BaseCrudView):
+    TITULO = "Gestão de Sensores IoT"
+    TITULO_FORM = "Cadastrar / Atualizar Sensor"
+    ENDPOINT = "sensores"
+    COLUNAS = [("id", "ID", 50), ("codigo_serial", "Código Serial", 140), ("tipo", "Tipo", 120),
+               ("status", "Status", 110), ("localizacao_id", "ID Localização", 100),
+               ("nivel_bateria", "Bateria (%)", 90)]
+
+    def criar_formulario(self, frame):
+        tk.Label(frame, text="Código Serial:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        self.entry_serial = tk.Entry(frame, width=22)
         self.entry_serial.grid(row=0, column=1, padx=5, pady=2)
 
-        tk.Label(frame_form, text="Tipo:").grid(row=0, column=2, sticky="w", padx=5, pady=2)
-        self.entry_tipo = tk.Entry(frame_form, width=18)
+        tk.Label(frame, text="Tipo:").grid(row=0, column=2, sticky="w", padx=5, pady=2)
+        self.entry_tipo = tk.Entry(frame, width=22)
         self.entry_tipo.grid(row=0, column=3, padx=5, pady=2)
 
-        tk.Label(frame_form, text="Status:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        self.entry_status = tk.Entry(frame_form, width=18)
-        self.entry_status.insert(0, "Ativo")
-        self.entry_status.grid(row=1, column=1, padx=5, pady=2)
+        tk.Label(frame, text="Status:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        # readonly: o usuário só consegue escolher um dos status válidos
+        self.combo_status = ttk.Combobox(frame, values=STATUS_VALIDOS, state="readonly", width=19)
+        self.combo_status.set(STATUS_VALIDOS[0])
+        self.combo_status.grid(row=1, column=1, padx=5, pady=2)
 
-        tk.Label(frame_form, text="ID Localização:").grid(row=1, column=2, sticky="w", padx=5, pady=2)
-        self.entry_loc_id = tk.Entry(frame_form, width=18)
+        tk.Label(frame, text="ID Localização:").grid(row=1, column=2, sticky="w", padx=5, pady=2)
+        self.entry_loc_id = tk.Entry(frame, width=22)
         self.entry_loc_id.grid(row=1, column=3, padx=5, pady=2)
 
-        tk.Label(frame_form, text="Bateria (%):").grid(row=2, column=0, sticky="w", padx=5, pady=2)
-        self.entry_bateria = tk.Entry(frame_form, width=18)
+        tk.Label(frame, text="Bateria (0 a 100 %):").grid(row=2, column=0, sticky="w", padx=5, pady=2)
+        self.entry_bateria = tk.Entry(frame, width=22)
         self.entry_bateria.grid(row=2, column=1, padx=5, pady=2)
 
-        # Botões de Ação CRUD
-        frame_botoes = tk.Frame(self.parent)
-        frame_botoes.pack(pady=5)
+    def coletar_dados(self, editando=False):
+        return {
+            "codigo_serial": obrigatorio(self.entry_serial.get(), "Código Serial"),
+            "tipo": obrigatorio(self.entry_tipo.get(), "Tipo"),
+            "status": obrigatorio(self.combo_status.get(), "Status"),
+            "localizacao_id": inteiro(self.entry_loc_id.get(), "ID Localização"),
+            "nivel_bateria": inteiro(self.entry_bateria.get(), "Bateria"),
+        }
 
-        btn_salvar = tk.Button(frame_botoes, text="Cadastrar Sensor", bg="green", fg="white", command=self.salvar)
-        btn_salvar.pack(side="left", padx=5)
+    def preencher_formulario(self, registro):
+        self.definir_texto(self.entry_serial, registro.get("codigo_serial"))
+        self.definir_texto(self.entry_tipo, registro.get("tipo"))
+        self.combo_status.set(registro.get("status") or STATUS_VALIDOS[0])
+        self.definir_texto(self.entry_loc_id, registro.get("localizacao_id"))
+        self.definir_texto(self.entry_bateria, registro.get("nivel_bateria"))
 
-        btn_atualizar = tk.Button(frame_botoes, text="Atualizar Selecionado", bg="orange", fg="white", command=self.atualizar)
-        btn_atualizar.pack(side="left", padx=5)
-
-        btn_excluir = tk.Button(frame_botoes, text="Excluir Selecionado", bg="red", fg="white", command=self.excluir)
-        btn_excluir.pack(side="left", padx=5)
-
-        btn_atualizar_lista = tk.Button(frame_botoes, text="Atualizar Lista", command=self.carregar_dados)
-        btn_atualizar_lista.pack(side="left", padx=5)
-
-        # Tabela (Treeview)
-        self.tree = ttk.Treeview(self.parent, columns=("ID", "Serial", "Tipo", "Status", "Loc ID", "Bateria"), show="headings")
-        self.tree.heading("ID", text="ID")
-        self.tree.heading("Serial", text="Código Serial")
-        self.tree.heading("Tipo", text="Tipo")
-        self.tree.heading("Status", text="Status")
-        self.tree.heading("Loc ID", text="ID Localização")
-        self.tree.heading("Bateria", text="Bateria (%)")
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
-
-        self.tree.bind("<<TreeviewSelect>>", self.preencher_campos)
-
-    def carregar_dados(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        
-        resultado = ApiCliente.get("sensores")
-        if resultado and resultado != "CONNECTION_ERROR":
-            for sens in resultado:
-                self.tree.insert("", "end", values=(
-                    sens.get("id"), 
-                    sens.get("codigo_serial"), 
-                    sens.get("tipo"), 
-                    sens.get("status"), 
-                    sens.get("localizacao_id"), 
-                    sens.get("nivel_bateria")
-                ))
-
-    def salvar(self):
-        try:
-            dados = {
-                "codigo_serial": self.entry_serial.get(),
-                "tipo": self.entry_tipo.get(),
-                "status": self.entry_status.get(),
-                "localizacao_id": int(self.entry_loc_id.get()),
-                "nivel_bateria": int(self.entry_bateria.get())
-            }
-            resp = ApiCliente.post("sensores", dados)
-            if resp and resp.status_code == 201:
-                messagebox.showinfo("Sucesso", "Sensor cadastrado com sucesso!")
-                self.limpar_campos()
-                self.carregar_dados()
-            else:
-                erro = resp.json().get("erro", "Erro desconhecido") if resp else "Erro de comunicação"
-                messagebox.showerror("Erro", f"Não foi possível cadastrar: {erro}")
-        except ValueError:
-            messagebox.showwarning("Aviso", "ID da Localização e Nível de Bateria devem ser números inteiros válidos.")
-
-    def atualizar(self):
-        if not hasattr(self, 'id_selecionado'):
-            messagebox.showwarning("Aviso", "Selecione um sensor na tabela para atualizar.")
-            return
-        try:
-            dados = {
-                "codigo_serial": self.entry_serial.get(),
-                "tipo": self.entry_tipo.get(),
-                "status": self.entry_status.get(),
-                "localizacao_id": int(self.entry_loc_id.get()),
-                "nivel_bateria": int(self.entry_bateria.get())
-            }
-            resp = ApiCliente.put(f"sensores/{self.id_selecionado}", dados)
-            if resp and resp.status_code == 200:
-                messagebox.showinfo("Sucesso", "Sensor atualizado com sucesso!")
-                self.limpar_campos()
-                self.carregar_dados()
-            else:
-                erro = resp.json().get("erro", "Erro desconhecido") if resp else "Erro de comunicação"
-                messagebox.showerror("Erro", f"Não foi possível atualizar: {erro}")
-        except ValueError:
-            messagebox.showwarning("Aviso", "ID da Localização e Nível de Bateria devem ser números inteiros válidos.")
-
-    def preencher_campos(self, event):
-        selecionado = self.tree.selection()
-        if selecionado:
-            item = self.tree.item(selecionado)
-            valores = item['values']
-            self.id_selecionado = valores[0]
-            
-            self.entry_serial.delete(0, tk.END)
-            self.entry_serial.insert(0, valores[1])
-            
-            self.entry_tipo.delete(0, tk.END)
-            self.entry_tipo.insert(0, valores[2])
-            
-            self.entry_status.delete(0, tk.END)
-            self.entry_status.insert(0, valores[3])
-            
-            self.entry_loc_id.delete(0, tk.END)
-            self.entry_loc_id.insert(0, valores[4])
-            
-            self.entry_bateria.delete(0, tk.END)
-            self.entry_bateria.insert(0, valores[5])
-
-    def excluir(self):
-        if not hasattr(self, 'id_selecionado'):
-            messagebox.showwarning("Aviso", "Selecione um sensor na tabela para excluir.")
-            return
-        
-        if messagebox.askyesno("Confirmar", "Deseja realmente excluir este sensor?"):
-            resp = ApiCliente.delete(f"sensores/{self.id_selecionado}")
-            if resp and resp.status_code == 200:
-                messagebox.showinfo("Sucesso", "Sensor excluído com sucesso!")
-                self.limpar_campos()
-                self.carregar_dados()
-            else:
-                messagebox.showerror("Erro", "Não foi possível excluir o sensor.")
-
-    def limpar_campos(self):
-        self.entry_serial.delete(0, tk.END)
-        self.entry_tipo.delete(0, tk.END)
-        self.entry_status.delete(0, tk.END)
-        self.entry_loc_id.delete(0, tk.END)
-        self.entry_bateria.delete(0, tk.END)
-        if hasattr(self, 'id_selecionado'):
-            del self.id_selecionado
+    def limpar_formulario(self):
+        for entry in (self.entry_serial, self.entry_tipo, self.entry_loc_id, self.entry_bateria):
+            entry.delete(0, tk.END)
+        self.combo_status.set(STATUS_VALIDOS[0])
